@@ -15,7 +15,16 @@
 	
 	<body>
 		<div class="container-fluid h-100">
-			<div class="row justify-content-center h-100">		
+			<div class="row justify-content-center h-100">
+				<!-- Medical Disclaimer -->
+				<div class="col-md-8 col-xl-6" style="position: absolute; top: 10px; z-index: 1000;">
+					<div class="alert alert-warning alert-dismissible fade show" role="alert" style="margin-bottom: 0;">
+						<strong>⚠️ Medical Disclaimer:</strong> This chatbot provides general medical information only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider for medical concerns.
+						<button type="button" class="close" data-dismiss="alert" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+				</div>
 				<div class="col-md-8 col-xl-6 chat">
 					<div class="card">
 						<div class="card-header msg_head">
@@ -29,11 +38,20 @@
 									<span>Medical Chatbot</span>
 									<p>Ask me anything!</p>
 								</div>
+								<div class="action_buttons ml-auto">
+									<button class="action-btn" onclick="exportHistory()" title="Export Chat History"><i class="fas fa-download"></i></button>
+									<button class="action-btn" onclick="clearConversation()" title="Clear Conversation"><i class="fas fa-trash"></i></button>
+								</div>
 							</div>
 						</div>
 						<div id="messageFormeight" class="card-body msg_card_body">
-							
-							
+							<div id="suggestedQuestions" class="suggested-questions">
+								<h6 style="color: rgba(255,255,255,0.8); margin-bottom: 15px;">Try asking:</h6>
+								<button class="suggested-btn" onclick="askQuestion('What are the symptoms of diabetes?')">What are the symptoms of diabetes?</button>
+								<button class="suggested-btn" onclick="askQuestion('What is hypertension?')">What is hypertension?</button>
+								<button class="suggested-btn" onclick="askQuestion('How does the immune system work?')">How does the immune system work?</button>
+								<button class="suggested-btn" onclick="askQuestion('What causes heart disease?')">What causes heart disease?</button>
+							</div>
 						</div>
 						<div class="card-footer">
 							<form id="messageArea" class="input-group">
@@ -49,6 +67,80 @@
 		</div>
 		
 		<script>
+			function sendFeedback(type, button) {
+				// Mark button as selected
+				$(button).addClass('selected');
+				$(button).siblings().removeClass('selected');
+
+				// Send feedback to server
+				$.ajax({
+					data: {
+						feedback: type,
+						timestamp: new Date().toISOString()
+					},
+					type: "POST",
+					url: "/feedback",
+				}).done(function(data) {
+					console.log("Feedback sent successfully");
+				}).fail(function(xhr, status, error) {
+					console.error("Failed to send feedback");
+				});
+			}
+
+			function exportHistory() {
+				$.ajax({
+					type: "GET",
+					url: "/history",
+				}).done(function(data) {
+					// Create downloadable text file
+					const history = data.history;
+					let content = "Medical Chatbot - Conversation History\n";
+					content += "=====================================\n\n";
+
+					history.forEach((item, index) => {
+						content += `[${item.timestamp}]\n`;
+						content += `User: ${item.question}\n`;
+						content += `Bot: ${item.answer}\n\n`;
+					});
+
+					const blob = new Blob([content], { type: 'text/plain' });
+					const url = window.URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = 'chat-history-' + new Date().toISOString().split('T')[0] + '.txt';
+					a.click();
+					window.URL.revokeObjectURL(url);
+				}).fail(function(xhr, status, error) {
+					alert("Failed to export history");
+				});
+			}
+
+			function clearConversation() {
+				if (confirm("Are you sure you want to clear the conversation history?")) {
+					$.ajax({
+						type: "POST",
+						url: "/clear",
+					}).done(function(data) {
+						$("#messageFormeight").empty();
+						// Re-show suggested questions
+						var suggestedHtml = '<div id="suggestedQuestions" class="suggested-questions"><h6 style="color: rgba(255,255,255,0.8); margin-bottom: 15px;">Try asking:</h6><button class="suggested-btn" onclick="askQuestion(\'What are the symptoms of diabetes?\')">What are the symptoms of diabetes?</button><button class="suggested-btn" onclick="askQuestion(\'What is hypertension?\')">What is hypertension?</button><button class="suggested-btn" onclick="askQuestion(\'How does the immune system work?\')">How does the immune system work?</button><button class="suggested-btn" onclick="askQuestion(\'What causes heart disease?\')">What causes heart disease?</button></div>';
+						$("#messageFormeight").append(suggestedHtml);
+						alert("Conversation cleared successfully!");
+					}).fail(function(xhr, status, error) {
+						alert("Failed to clear conversation");
+					});
+				}
+			}
+
+			function askQuestion(question) {
+				// Hide suggested questions
+				$("#suggestedQuestions").remove();
+				// Set the question in the input field
+				$("#text").val(question);
+				// Trigger form submission
+				$("#messageArea").submit();
+			}
+
 			$(document).ready(function() {
 				$("#messageArea").on("submit", function(event) {
 					const date = new Date();
@@ -57,20 +149,49 @@
 					const str_time = hour+":"+minute;
 					var rawText = $("#text").val();
 
+					// Hide suggested questions on first message
+					$("#suggestedQuestions").remove();
+
 					var userHtml = '<div class="d-flex justify-content-end mb-4"><div class="msg_cotainer_send">' + rawText + '<span class="msg_time_send">'+ str_time + '</span></div><div class="img_cont_msg"><img src="https://i.ibb.co/d5b84Xw/Untitled-design.png" class="rounded-circle user_img_msg"></div></div>';
-					
+
 					$("#text").val("");
 					$("#messageFormeight").append(userHtml);
 
+					// Add typing indicator
+					var typingHtml = '<div class="d-flex justify-content-start mb-4" id="typingIndicator"><div class="img_cont_msg"><img src="https://cdn-icons-png.flaticon.com/512/387/387569.png" class="rounded-circle user_img_msg"></div><div class="msg_cotainer"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>';
+					$("#messageFormeight").append(typingHtml);
+
+					// Auto-scroll to bottom
+					$("#messageFormeight").scrollTop($("#messageFormeight")[0].scrollHeight);
+
 					$.ajax({
 						data: {
-							msg: rawText,	
+							msg: rawText,
 						},
 						type: "POST",
 						url: "/get",
 					}).done(function(data) {
-						var botHtml = '<div class="d-flex justify-content-start mb-4"><div class="img_cont_msg"><img src="https://cdn-icons-png.flaticon.com/512/387/387569.png" class="rounded-circle user_img_msg"></div><div class="msg_cotainer">' + data + '<span class="msg_time">' + str_time + '</span></div></div>';
+						// Remove typing indicator
+						$("#typingIndicator").remove();
+
+						var botHtml = '<div class="d-flex justify-content-start mb-4"><div class="img_cont_msg"><img src="https://cdn-icons-png.flaticon.com/512/387/387569.png" class="rounded-circle user_img_msg"></div><div class="msg_cotainer">' + data + '<span class="msg_time">' + str_time + '</span><div class="feedback-buttons"><button class="feedback-btn thumbs-up" onclick="sendFeedback(\'up\', this)"><i class="fas fa-thumbs-up"></i></button><button class="feedback-btn thumbs-down" onclick="sendFeedback(\'down\', this)"><i class="fas fa-thumbs-down"></i></button></div></div></div>';
 						$("#messageFormeight").append($.parseHTML(botHtml));
+
+						// Auto-scroll to bottom
+						$("#messageFormeight").scrollTop($("#messageFormeight")[0].scrollHeight);
+					}).fail(function(xhr, status, error) {
+						// Remove typing indicator
+						$("#typingIndicator").remove();
+
+						var errorMsg = "Sorry, an error occurred. Please try again.";
+						if (xhr.responseJSON && xhr.responseJSON.error) {
+							errorMsg = xhr.responseJSON.error;
+						}
+						var botHtml = '<div class="d-flex justify-content-start mb-4"><div class="img_cont_msg"><img src="https://cdn-icons-png.flaticon.com/512/387/387569.png" class="rounded-circle user_img_msg"></div><div class="msg_cotainer" style="background-color: #dc3545; color: white;">' + errorMsg + '<span class="msg_time">' + str_time + '</span></div></div>';
+						$("#messageFormeight").append($.parseHTML(botHtml));
+
+						// Auto-scroll to bottom
+						$("#messageFormeight").scrollTop($("#messageFormeight")[0].scrollHeight);
 					});
 					event.preventDefault();
 				});
